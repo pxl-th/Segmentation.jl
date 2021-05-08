@@ -1,0 +1,4 @@
+name = "Segmentation"
+uuid = "05b5c9a2-400c-477f-90bb-ac00286c580d"
+authors = ["Anton Smirnov <anton.smn@protonmail.com>"]
+version = "0.1.0"
