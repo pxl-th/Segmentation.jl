@@ -5,3 +5,4 @@ version = "0.1.0"
 
 [deps]
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+ResNet = "58a9d5b1-5aa3-499c-8f61-cc8cc0c973ca"

@@ -41,17 +41,8 @@ end
 Flux.@functor UNetDecoder
 
 function UNetDecoder(
-    encoder_channels::AbstractVector{Int64},
-    decoder_channels::AbstractVector{Int64};
-    n_blocks::Int64 = 5
+    encoder_channels::Vector{Int64}, decoder_channels::Vector{Int64},
 )
-    if length(decoder_channels) != n_blocks
-        throw(
-            "Number of decoder channels is not the same as the " *
-            "number of blocks. ($(length(decoder_channels)) vs $n_blocks)"
-        )
-    end
-
     encoder_channels = encoder_channels[end:-1:2]
     head_channels = encoder_channels[1]
     in_channels = [head_channels; decoder_channels[1:end - 1]]
@@ -70,7 +61,7 @@ function (d::UNetDecoder)(features)
     skips = features[2:end]
 
     x = head
-    for (i, block) in d.blocks
+    for (i, block) in enumerate(d.blocks)
         x = block(x, i ≤ length(skips) ? skips[i] : nothing)
     end
     x

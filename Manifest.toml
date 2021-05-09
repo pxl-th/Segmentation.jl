@@ -345,6 +345,14 @@ git-tree-sha1 = "4036a3bd08ac7e968e27c203d45f5fff15020621"
 uuid = "ae029012-a4dd-5104-9daa-d747884805df"
 version = "1.1.3"
 
+[[ResNet]]
+deps = ["Flux"]
+git-tree-sha1 = "bafdabb3548fd3b4d9937237fc9277d4077ae08c"
+repo-rev = "master"
+repo-url = "https://github.com/pxl-th/ResNet.jl.git"
+uuid = "58a9d5b1-5aa3-499c-8f61-cc8cc0c973ca"
+version = "0.1.0"
+
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 
