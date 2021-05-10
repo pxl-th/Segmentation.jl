@@ -4,5 +4,8 @@ authors = ["Anton Smirnov <anton.smn@protonmail.com>"]
 version = "0.1.0"
 
 [deps]
+DataLoaders = "2e981812-ef13-4a9c-bfa0-ab13047b12a9"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+Images = "916415d5-f1e6-5110-898d-aaa5f9f070e0"
+Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 ResNet = "58a9d5b1-5aa3-499c-8f61-cc8cc0c973ca"
