@@ -50,8 +50,7 @@ function UNetDecoder(
 
     UNetDecoder([
         DecoderBlock(inc, sc, oc)
-        for (inc, sc, oc)
-        in zip(encoder_channels, skip_channels, decoder_channels)
+        for (inc, sc, oc) in zip(in_channels, skip_channels, decoder_channels)
     ])
 end
 

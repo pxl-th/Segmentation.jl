@@ -12,15 +12,16 @@ struct UNet{E, D, S} <: Seg{E, D, S}
     decoder::D
     segmentation::S
 end
+Flux.@functor UNet
 
 function UNet(;
     classes::Int64,
     encoder,
-    decoder_channels::Vector{Int64} = [256, 128, 64, 64, 16],
+    decoder_channels::Vector{Int64} = [256, 128, 64, 32, 16],
 )
     UNet(
         encoder,
-        UNetDecoder(encoder.stages_channels, decoder_channels),
+        UNetDecoder(ResNet.stages_channels(encoder), decoder_channels),
         SegmentationHead((3, 3), decoder_channels[end]=>classes),
     )
 end
@@ -31,13 +32,14 @@ function (s::Seg)(x)
 end
 
 function main()
-    encoder = ResNetModel(;size=18, in_channels=3, classes=nothing)
-    model = UNet(;classes=4, encoder)
-    @info encoder.stages_channels
+    in_channels = 1
+    encoder = ResNetModel(;size=18, in_channels, classes=nothing)
+    @info stages_channels(encoder)
+    model = UNet(;classes=4, encoder) |> gpu
 
-    x = randn(Float32, 224, 224, 3, 1)
+    x = randn(Float32, 224, 224, in_channels, 1) |> gpu
     o = model(x)
-    @info size(o)
+    @info size(o), typeof(o)
 end
 main()
 
