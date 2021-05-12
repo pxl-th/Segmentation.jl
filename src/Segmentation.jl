@@ -1,12 +1,15 @@
 module Segmentation
 
-using Flux
-using ResNet
+using Random
 using Images
 using DataLoaders
 using Interpolations
-using Random
 using ProgressMeter
+
+using CUDA
+CUDA.allowscalar(false)
+using Flux
+using ResNet
 using ParameterSchedulers: Scheduler, Cos
 
 include("decoder.jl")
@@ -112,11 +115,9 @@ function probs_to_mask(classes, palette::Vector{T}) where T
 end
 
 function main()
-    # TODO reduce memory usage
-    # TODO improve performance
-    # TODO accumulate gradient
     # TODO image augmentation
-    # TODO colorize mask output
+    # TODO accumulate grads
+    # TODO add ability to disable batchnorm
 
     device = gpu
     epochs = 100
@@ -168,8 +169,8 @@ function main()
                 train_loss += loss
                 loss
             end
-            Flux.Optimise.update!(optimizer, trainables, grads)
 
+            Flux.Optimise.update!(optimizer, trainables, grads)
             GC.gc()
             bar |> next!
         end
@@ -182,8 +183,7 @@ function main()
         for (i, (x, y)) in enumerate(valid_loader)
             x, y = x |> device, y |> device
             o = x |> model
-            loss = Flux.logitcrossentropy(o, y; dims=3)
-            validation_loss += loss
+            validation_loss += Flux.logitcrossentropy(o, y; dims=3)
 
             if i == 1
                 o = softmax(o; dims=3) |> cpu
@@ -198,7 +198,6 @@ function main()
             GC.gc()
             bar |> next!
         end
-
         validation_loss /= length(valid_loader)
         @info "epoch $epoch | validation loss $validation_loss"
     end
