@@ -125,7 +125,6 @@ function main()
     color_palette, bw_palette = get_palette()
     classes = bw_palette |> length
     # resolution = (18 * 32, 14 * 32)
-    # resolution = (13 * 32, 10 * 32)
     resolution = (10 * 32, 7 * 32)
 
     base_dir = raw"C:\Users\tonys\projects\comma10k"
@@ -144,12 +143,12 @@ function main()
     model = UNet(;
         classes, encoder=ResNetModel(;size=18, in_channels=3, classes=nothing),
     ) |> device
-    trainables = model |> params
+    θ = model |> params
 
     @info "Image resolution: $resolution [width, height]"
     @info "Train images: $(length(train_files))"
     @info "Validation images: $(length(valid_files))"
-    @info "Total Parameters: $(length(trainables))"
+    @info "Total Parameters: $(length(θ))"
     @info "LR Scheduler: [λ0=$λ0, λ1=$λ1], period=$period"
 
     @info "--- Training ---"
@@ -164,13 +163,13 @@ function main()
         bar = get_pb(length(train_loader), "[epoch $epoch | training]: ")
         for (x, y) in train_loader
             x, y = x |> device, y |> device
-            grads = gradient(trainables) do
+            grads = gradient(θ) do
                 loss = Flux.logitcrossentropy(x |> model, y; dims=3)
                 train_loss += loss
                 loss
             end
 
-            Flux.Optimise.update!(optimizer, trainables, grads)
+            Flux.Optimise.update!(optimizer, θ, grads)
             GC.gc()
             bar |> next!
         end
