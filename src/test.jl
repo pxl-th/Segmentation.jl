@@ -1,5 +1,5 @@
-using CUDA
-CUDA.allowscalar(false)
+# using CUDA
+# CUDA.allowscalar(false)
 using Zygote
 
 function grad_acc()
@@ -12,14 +12,15 @@ function grad_acc()
     # g1 = gradient(()->Flux.mse(conv(x), y), θ)
     # g2 = gradient(()->Flux.mse(conv(x), y), θ)
 
-    w = randn(Float32, 2) |> cu
-    x1 = randn(Float32, 2) |> cu
-    x2 = randn(Float32, 2) |> cu
+    w = randn(Float32, 2)
+    x = randn(Float32, 2)
     p = Params([w])
 
-    g1 = gradient(() -> sum(w .* x1), p)
-    g2 = gradient(() -> sum(w .* x2), p)
+    g1 = gradient(() -> sum(w .* x) / 2, p)
+    g2 = gradient(() -> sum(w .* x) / 2, p)
 
-    g1 .+= g2
+    @info g1[w]
+    @info g2[w]
+    @info g1[w] + g2[w]
 end
 grad_acc()

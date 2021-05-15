@@ -5,6 +5,7 @@ using Images
 using DataLoaders
 using Interpolations
 using ProgressMeter
+using Augmentations
 
 using CUDA
 CUDA.allowscalar(false)
@@ -45,6 +46,9 @@ struct Dataset
     files::Vector{String}
     resolution::Tuple{Int64, Int64} # (width, height)
     palette::Vector{Gray}
+
+    flip_augmentation::Union{Augmentations.FlipX, Nothing}
+    augmentations::Union{Augmentations.Sequential, Nothing}
 end
 
 function get_pb(n, desc::String)
@@ -57,11 +61,21 @@ DataLoaders.nobs(d::Dataset) = d.files |> length
 function DataLoaders.getobs(d::Dataset, i::Int64)
     name = d.files[i]
 
-    image = joinpath(d.base, "imgs", name) |> load |> channelview .|> Float32
+    image = joinpath(d.base, "imgs", name) |> load .|> RGB
+    mask = joinpath(d.base, "masks", name) |> load .|> RGB
+
+    if d.flip_augmentation ≢ nothing
+        image, mask = d.flip_augmentation([image, mask])
+    end
+    if d.augmentations ≢ nothing
+        image = d.augmentations([image])[1]
+    end
+
+    image = image |> channelview .|> Float32
     image = permutedims(image, (3, 2, 1))
     image = imresize(image, d.resolution)
 
-    mask = joinpath(d.base, "masks", name) |> load .|> Gray
+    mask = mask .|> Gray
     mask = permutedims(mask, (2, 1))
     mask = imresize(mask, d.resolution; method=Constant())
     mask = mask_to_classes(mask, d.palette)
@@ -72,7 +86,7 @@ end
 function load_file_names(path::String)
     train = String[]
     valid = String[]
-    for f in readlines(path)[1:100]
+    for f in readlines(path)[1:500]
         push!(endswith(f, "9.png") ? valid : train, split(f, "masks/")[end])
     end
     train, valid
@@ -115,12 +129,11 @@ function probs_to_mask(classes, palette::Vector{T}) where T
 end
 
 function main()
-    # TODO image augmentation
-    # TODO accumulate grads
-    # TODO add ability to disable batchnorm
+    # TODO fix save
+    # TODO early stopping
 
     device = gpu
-    epochs = 100
+    epochs = 50
     batch_size = 2
     color_palette, bw_palette = get_palette()
     classes = bw_palette |> length
@@ -132,8 +145,21 @@ function main()
         joinpath(base_dir, "files_trainable"),
     )
 
-    valid_dataset = Dataset(base_dir, valid_files, resolution, bw_palette)
+    valid_dataset = Dataset(
+        base_dir, valid_files, resolution, bw_palette, nothing, nothing,
+    )
     valid_loader = DataLoader(valid_dataset, batch_size)
+
+    flip_augmentation = Augmentations.FlipX(0.5)
+    augmentations = Augmentations.Sequential([
+        Augmentations.GaussNoise(0.3, 0.1),
+        Augmentations.OneOf(0.5, [
+            Augmentations.CLAHE(1),
+            Augmentations.RandomGamma(1, (0.5, 2)),
+            Augmentations.RandomBrightness(1, 0.2),
+        ]),
+        Augmentations.Blur(0.5, 3),
+    ])
 
     λ1 = 1e-4
     λ0 = λ1 / 50
@@ -141,7 +167,11 @@ function main()
     optimizer = Scheduler(Cos(;λ0, λ1, period), ADAM())
 
     model = UNet(;
-        classes, encoder=ResNetModel(;size=18, in_channels=3, classes=nothing),
+        classes,
+        encoder=ResNetModel(;
+            size=18, in_channels=3, classes=nothing, use_bn=true,
+        ),
+        # decoder_channels=[128, 64, 32, 16, 8],
     ) |> device
     θ = model |> params
 
@@ -154,31 +184,33 @@ function main()
     @info "--- Training ---"
     for epoch in 1:epochs
         train_loader = DataLoader(
-            Dataset(base_dir, shuffle!(train_files), resolution, bw_palette),
-            batch_size,
+            Dataset(
+                base_dir, shuffle!(train_files), resolution, bw_palette,
+                flip_augmentation, augmentations,
+            ),
+            batch_size;
         )
 
         model |> trainmode!
-        train_loss = 0.0
+        train_loss = 0f0
         bar = get_pb(length(train_loader), "[epoch $epoch | training]: ")
+
         for (x, y) in train_loader
             x, y = x |> device, y |> device
-            grads = gradient(θ) do
-                loss = Flux.logitcrossentropy(x |> model, y; dims=3)
-                train_loss += loss
-                loss
+            ∇ = gradient(θ) do
+                Flux.logitcrossentropy(x |> model, y; dims=3)
             end
 
-            Flux.Optimise.update!(optimizer, θ, grads)
+            Flux.Optimise.update!(optimizer, θ, ∇)
             GC.gc()
             bar |> next!
         end
-        train_loss /= length(train_loader)
-        @info "epoch $epoch | train loss $train_loss | lr $(optimizer.optim.eta)"
+        # train_loss /= length(train_loader)
+        # @info "epoch $epoch | train loss $train_loss | lr $(optimizer.optim.eta)"
 
         model |> testmode!
         bar = get_pb(length(valid_loader), "[epoch $epoch | testing]: ")
-        validation_loss = 0.0
+        validation_loss = 0f0
         for (i, (x, y)) in enumerate(valid_loader)
             x, y = x |> device, y |> device
             o = x |> model

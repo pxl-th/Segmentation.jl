@@ -4,6 +4,7 @@ authors = ["Anton Smirnov <anton.smn@protonmail.com>"]
 version = "0.1.0"
 
 [deps]
+Augmentations = "201790e9-3802-4bf2-a4d2-ca8acc212efd"
 CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
 DataLoaders = "2e981812-ef13-4a9c-bfa0-ab13047b12a9"
 Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
