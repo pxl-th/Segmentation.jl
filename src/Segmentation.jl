@@ -12,6 +12,7 @@ CUDA.allowscalar(false)
 using Flux
 using ResNet
 using ParameterSchedulers: Scheduler, Cos
+using BSON: @save, @load, bson
 
 include("decoder.jl")
 include("head.jl")
@@ -86,7 +87,7 @@ end
 function load_file_names(path::String)
     train = String[]
     valid = String[]
-    for f in readlines(path)[1:500]
+    for f in readlines(path)
         push!(endswith(f, "9.png") ? valid : train, split(f, "masks/")[end])
     end
     train, valid
@@ -129,8 +130,8 @@ function probs_to_mask(classes, palette::Vector{T}) where T
 end
 
 function main()
-    # TODO fix save
-    # TODO early stopping
+    # TODO test inplace functions
+    # TODO add tensorboard
 
     device = gpu
     epochs = 50
@@ -174,6 +175,12 @@ function main()
         # decoder_channels=[128, 64, 32, 16, 8],
     ) |> device
     θ = model |> params
+
+#     θ_save = model |> cpu |> params |> collect
+#     @save "weights_$x.bson" θ_save
+#     @load "weights_$x.bson" θ_save
+#     θ_load = θ_save |> Flux.Params
+#     Flux.loadparams!(model, θ_load)
 
     @info "Image resolution: $resolution [width, height]"
     @info "Train images: $(length(train_files))"
@@ -231,6 +238,9 @@ function main()
         end
         validation_loss /= length(valid_loader)
         @info "epoch $epoch | validation loss $validation_loss"
+
+        θ_save = model |> cpu |> params |> collect
+        @save "./weights/v1/params-epoch-$epoch-valloss-$validation_loss.bson" θ_save
     end
 end
 main()
