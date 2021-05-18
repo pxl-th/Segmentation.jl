@@ -30,7 +30,7 @@ function conv2drelu(
 )
     Chain(
         Conv(kernel, channels; stride, pad, bias=false),
-        BatchNorm(channels[2]), # bias=false because of batch norm.
+        BatchNorm(channels[2]),
         x -> x .|> relu,
     )
 end
