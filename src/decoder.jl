@@ -1,8 +1,13 @@
-struct DecoderBlock{C, D}
-    # TODO attention1
-    # TODO attention2
-    conv1::C
-    conv2::D
+conv2drelu(
+    kernel::Tuple{Int64, Int64}, channels::Pair{Int64, Int64};
+    pad::Int64 = 0, stride::Int64 = 1,
+) = (
+    Conv(kernel, channels; stride, pad, bias=false),
+    BatchNorm(channels[2], relu),
+)
+
+struct DecoderBlock{C}
+    conv::C
 end
 Flux.@functor DecoderBlock
 
@@ -11,28 +16,17 @@ function DecoderBlock(in_channels, skip_channels, out_channels)
         (3, 3), (in_channels + skip_channels)=>out_channels; pad=1,
     )
     conv2 = conv2drelu((3, 3), out_channels=>out_channels; pad=1)
-    DecoderBlock(conv1, conv2)
+    DecoderBlock(Chain(conv1..., conv2...))
 end
 
 function (d::DecoderBlock)(
-    x::AbstractArray{T}, skip::Union{AbstractArray{T}, Nothing} = nothing
+    x::AbstractArray{T}, skip::Union{AbstractArray{T}, Nothing},
 ) where T
-    x = upsample_nearest(x, (2, 2))
+    o = upsample_nearest(x, (2, 2))
     if skip ≢ nothing
-        x = cat(x, skip; dims=3) # TODO |> attention1
+        o = cat(o, skip; dims=3)
     end
-    x |> d.conv1 |> d.conv2 # TODO |> attention2
-end
-
-function conv2drelu(
-    kernel::Tuple{Int64, Int64}, channels::Pair{Int64, Int64};
-    pad::Int64 = 0, stride::Int64 = 1,
-)
-    Chain(
-        Conv(kernel, channels; stride, pad, bias=false),
-        BatchNorm(channels[2]),
-        x -> x .|> relu,
-    )
+    o |> d.conv
 end
 
 struct UNetDecoder{B}
@@ -40,13 +34,11 @@ struct UNetDecoder{B}
 end
 Flux.@functor UNetDecoder
 
-function UNetDecoder(
-    encoder_channels::Vector{Int64}, decoder_channels::Vector{Int64},
-)
+function UNetDecoder(encoder_channels, decoder_channels)
     encoder_channels = encoder_channels[end:-1:2]
     head_channels = encoder_channels[1]
-    in_channels = [head_channels; decoder_channels[1:end - 1]]
-    skip_channels = [encoder_channels[2:end]; 0]
+    in_channels = [head_channels, decoder_channels[1:end - 1]...]
+    skip_channels = [encoder_channels[2:end]..., 0]
 
     UNetDecoder([
         DecoderBlock(inc, sc, oc)
@@ -56,12 +48,15 @@ end
 
 function (d::UNetDecoder)(features)
     features = features[end:-1:2]
-    head = features[1]
-    skips = features[2:end]
+    head, skips = features[1], features[2:end]
 
     x = head
     for (i, block) in enumerate(d.blocks)
-        x = block(x, i ≤ length(skips) ? skips[i] : nothing)
+        skip = nothing
+        if i ≤ length(skips)
+            skip = skips[i]
+        end
+        x = block(x, skip)
     end
     x
 end
