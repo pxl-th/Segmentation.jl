@@ -25,9 +25,7 @@ function DataLoaders.getobs(d::Dataset, i::Int64)
     mask = joinpath(d.base, "masks", name) |> load .|> RGB
 
     image = imresize(image, d.resolution)
-    image = image[:, 49:end - 48]
     mask = imresize(mask, d.resolution; method=Constant())
-    mask = mask[:, 49:end - 48]
 
     if d.flip_augmentation ≢ nothing
         image, mask = d.flip_augmentation([image, mask])

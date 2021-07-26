@@ -2,7 +2,6 @@ module Segmentation
 export UNet
 
 using Flux
-using ResNet
 
 include("decoder.jl")
 include("head.jl")
@@ -15,15 +14,19 @@ end
 Flux.@functor UNet
 
 function UNet(;
-    classes, encoder, decoder_channels = (256, 128, 64, 32, 16),
+    classes, encoder, encoder_channels, decoder_channels = (256, 128, 64, 32, 16),
 )
     UNet(
         encoder,
-        UNetDecoder(ResNet.stages_channels(encoder), decoder_channels),
+        UNetDecoder(encoder_channels, decoder_channels),
         SegmentationHead((3, 3), decoder_channels[end]=>classes),
     )
 end
 
-(u::UNet)(x) = u.encoder(x, Val(:stages)) |> u.decoder |> u.segmentation
+function (u::UNet)(x)
+    features = u.encoder(x, Val(:stages))
+    decoded = u.decoder(features)
+    u.segmentation(decoded)
+end
 
 end

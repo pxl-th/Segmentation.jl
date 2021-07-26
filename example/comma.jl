@@ -1,9 +1,9 @@
 using Random
 using LinearAlgebra
 
-using CUDA
 using Flux
-using ResNet
+using EfficientNet
+# using ResNet
 using Segmentation
 
 using Augmentations
@@ -14,8 +14,7 @@ using Interpolations
 using BSON: @save, @load, bson
 using ProgressMeter
 
-CUDA.allowscalar(false)
-Flux.trainable(bn::Flux.BatchNorm) = Flux.hasaffine(bn) ? (bn.β, bn.γ, bn.μ, bn.σ²) : ()
+# Flux.trainable(bn::Flux.BatchNorm) = Flux.hasaffine(bn) ? (bn.β, bn.γ, bn.μ, bn.σ²) : ()
 Random.seed!(1)
 
 include("data.jl")
@@ -58,25 +57,25 @@ TODO explicit type conversion on the models output crashes gradient calculation
 function main()
     device = gpu
     epochs = 1000
-    batch_size = 1
+    batch_size = 2
     color_palette, bw_palette = get_palette()
     classes = bw_palette |> length
-    resolution = (7 * 32, 10 * 32)
+    resolution = (10 * 32, 13 * 32)
 
-    flip_augmentation = FlipX(0.5)
-    augmentations = Sequential([
-        OneOf(0.5, [CLAHE(;p=1, rblocks=2, cblocks=2), Equalize(1)]),
-        OneOf(0.25, [ToGray(1), Downscale(1, (0.25, 0.75))]),
-        OneOf(0.5, [
-            Blur(;p=1),
-            GaussNoise(;p=1, σ_range=(0.03, 0.08)),
-            RandomGamma(1, (0.5, 3)),
-            RandomBrightness(1, 0.2),
-        ]),
-    ])
+    # flip_augmentation = FlipX(0.5)
+    # augmentations = Sequential([
+    #     OneOf(0.5, [CLAHE(;p=1, rblocks=2, cblocks=2), Equalize(1)]),
+    #     OneOf(0.25, [ToGray(1), Downscale(1, (0.25, 0.75))]),
+    #     OneOf(0.5, [
+    #         Blur(;p=1),
+    #         GaussNoise(;p=1, σ_range=(0.03, 0.08)),
+    #         RandomGamma(1, (0.5, 3)),
+    #         RandomBrightness(1, 0.2),
+    #     ]),
+    # ])
 
-    base_dir = raw"C:\Users\tonys\projects\comma10k"
-    files = readlines(joinpath(base_dir, "files_trainable")) #[1:1]
+    base_dir = "/home/pxl-th/projects/comma10k"
+    files = readlines(joinpath(base_dir, "files_trainable"))
     train_files, valid_files = load_file_names(files)
 
     train_dataset = Dataset(
@@ -87,8 +86,11 @@ function main()
     valid_loader = DataLoader(valid_dataset, batch_size)
 
     optimizer = ADAM(3f-4)
-    encoder = ResNet.from_pretrained(18; classes=nothing)
-    model = UNet(;classes, encoder) |> device
+    encoder = EfficientNet.from_pretrained("efficientnet-b0"; include_head=false)
+    encoder_channels = EfficientNet.stages_channels(encoder)
+    # encoder = ResNet.from_pretrained(18; classes=nothing)
+    # encoder_channels = ResNet.stages_channels(encoder)
+    model = UNet(;classes, encoder, encoder_channels) |> device
     θ = model |> params
 
     # θ_save = model |> cpu |> params |> collect
@@ -104,8 +106,6 @@ function main()
     @info "--- Training ---"
 
     for epoch in 1:epochs
-        CUDA.memory_status()
-
         model |> trainmode!
         train_dataset.files |> shuffle!
         train_loader = DataLoader(train_dataset, batch_size)
@@ -120,7 +120,6 @@ function main()
         train_loss /= length(train_loader)
         @info "Epoch $epoch | Train Loss $train_loss"
 
-
         # model |> testmode!
         bar = get_pb(length(valid_loader), "[epoch $epoch | testing]: ")
         validation_loss = 0f0
@@ -133,45 +132,46 @@ function main()
         validation_loss /= length(valid_loader)
         @info "Epoch $epoch | Validation Loss $validation_loss"
 
-        θ_save = model |> cpu |> params |> collect
-        @save "./weights/v2/params-epoch-$epoch-valloss-$validation_loss.bson" θ_save
+        # θ_save = model |> cpu |> params |> collect
+        # @save "./weights/v2/params-epoch-$epoch-valloss-$validation_loss.bson" θ_save
 
-        GC.gc()
+        # GC.gc()
     end
 end
 
 function test_grads()
-    device = cpu
+    device = gpu
     batch_size = 1
     color_palette, bw_palette = get_palette()
     classes = bw_palette |> length
     resolution = (7 * 32, 10 * 32)
 
-    base_dir = raw"C:\Users\tonys\projects\comma10k"
-    train_files, valid_files = load_file_names(
-        joinpath(base_dir, "files_trainable"),
-    )
+    base_dir = "/home/pxl-th/projects/comma10k"
+    files = readlines(joinpath(base_dir, "files_trainable"))[1:10]
+    train_files, valid_files = load_file_names(files)
 
     train_dataset = Dataset(base_dir, train_files, resolution, bw_palette)
     train_loader = DataLoader(train_dataset, batch_size)
 
-    encoder = ResNet.from_pretrained(18; classes=nothing)
-    model = UNet(;classes, encoder)
-    model = model |> device
+    encoder = EfficientNet.from_pretrained("efficientnet-b0"; include_head=false)
+    encoder_channels = EfficientNet.stages_channels(encoder)
+    model = UNet(;classes, encoder, encoder_channels) |> device |> trainmode!
 
     θ = model |> params
     for t in θ
         @info typeof(t), size(t)
     end
 
-    # optimizer = Flux.Optimiser(Flux.ClipNorm(2f0), ADAM(3f-4))
     optimizer = ADAM(3f-4)
 
     xg, yg = nothing, nothing
     for (x, y) in train_loader
         xg, yg = x, y
+        @show size(x)
+        @show size(y)
         break
     end
+    exit()
 
     for _ in 1:10
         x = xg |> device

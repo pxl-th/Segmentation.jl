@@ -1,6 +1,6 @@
 conv2drelu(
-    kernel::Tuple{Int64, Int64}, channels::Pair{Int64, Int64};
-    pad::Int64 = 0, stride::Int64 = 1,
+    kernel::Tuple{Int, Int}, channels::Pair{Int, Int};
+    pad::Int = 0, stride::Int = 1,
 ) = (
     Conv(kernel, channels; stride, pad, bias=false),
     BatchNorm(channels[2], relu),
@@ -19,9 +19,7 @@ function DecoderBlock(in_channels, skip_channels, out_channels)
     DecoderBlock(Chain(conv1..., conv2...))
 end
 
-function (d::DecoderBlock)(
-    x::AbstractArray{T}, skip::Union{AbstractArray{T}, Nothing},
-) where T
+function (d::DecoderBlock)(x, skip)
     o = upsample_nearest(x, (2, 2))
     if skip ≢ nothing
         o = cat(o, skip; dims=3)
@@ -35,7 +33,7 @@ end
 Flux.@functor UNetDecoder
 
 function UNetDecoder(encoder_channels, decoder_channels)
-    encoder_channels = encoder_channels[end:-1:2]
+    encoder_channels = encoder_channels[end:-1:1]
     head_channels = encoder_channels[1]
     in_channels = [head_channels, decoder_channels[1:end - 1]...]
     skip_channels = [encoder_channels[2:end]..., 0]
@@ -47,7 +45,7 @@ function UNetDecoder(encoder_channels, decoder_channels)
 end
 
 function (d::UNetDecoder)(features)
-    features = features[end:-1:2]
+    features = features[end:-1:1]
     head, skips = features[1], features[2:end]
 
     x = head
