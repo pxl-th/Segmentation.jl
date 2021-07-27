@@ -25,7 +25,8 @@ mask = x |> model
 
 ## Supported backbones
 
-- ResNet: See [ResNet.jl](https://github.com/pxl-th/ResNet.jl) for more details.
+- [ResNet.jl](https://github.com/pxl-th/ResNet.jl)
+- [EfficientNet.jl](https://github.com/pxl-th/EfficientNet.jl)
 
 ## Examples
 
