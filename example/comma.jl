@@ -129,10 +129,10 @@ end
 
 function eval()
     device = gpu
-    iresolution = (7 * 32, 10 * 32)
-    oresolution = (874, 1164)
-    wresolution = (874 ÷ 3 + 1, 2 * oresolution[2] ÷ 3)
-    @show wresolution
+    model_res = (7 * 32, 10 * 32)
+    original_res = (874, 1164)
+    write_res = (874 ÷ 3 + 1, 2 * original_res[2] ÷ 3)
+    @show write_res
 
     μ = reshape([0.485f0, 0.456f0, 0.406f0], (3, 1, 1))
     σ = reshape([0.229f0, 0.224f0, 0.225f0], (3, 1, 1))
@@ -141,13 +141,14 @@ function eval()
     @load "./weights/v1/epoch-5-valloss-0.103507854.bson" model_host
     model = model_host |> device |> testmode!
 
+    output_video = "5-seg.mp4"
     video_file = "/home/pxl-th/projects/SLAM.jl/data/5.hevc"
     reader = video_file |> openvideo
 
     i = 1
-    open_video_out("5-seg.mp4", RGB{N0f8}, wresolution; framerate=25) do writer
+    open_video_out(output_video, RGB{N0f8}, write_res; framerate=25) do writer
     for frame in reader
-        in_frame = imresize(frame, iresolution)
+        in_frame = imresize(frame, model_res)
         in_frame = in_frame |> channelview .|> Float32
         in_frame .= (in_frame .- μ) ./ σ # ImageNet preprocessing.
         in_frame = permutedims(in_frame, (3, 2, 1))
@@ -157,8 +158,8 @@ function eval()
         mask = probs_to_mask(probs[:, :, :, 1], color_palette)
         mask = permutedims(mask, (2, 1))
 
-        wframe = hcat(imresize(frame, oresolution), imresize(mask, oresolution))
-        wframe = imresize(wframe, wresolution)
+        wframe = hcat(imresize(frame, original_res), imresize(mask, original_res))
+        wframe = imresize(wframe, write_res)
         write(writer, wframe)
 
         @info i
