@@ -13,6 +13,7 @@ using Interpolations
 
 using BSON: @save, @load, bson
 using ProgressMeter
+using VideoIO
 
 Random.seed!(1)
 
@@ -126,4 +127,46 @@ function main()
     end
 end
 
-main()
+function eval()
+    device = gpu
+    iresolution = (7 * 32, 10 * 32)
+    oresolution = (874, 1164)
+    wresolution = (874 ÷ 3 + 1, 2 * oresolution[2] ÷ 3)
+    @show wresolution
+
+    μ = reshape([0.485f0, 0.456f0, 0.406f0], (3, 1, 1))
+    σ = reshape([0.229f0, 0.224f0, 0.225f0], (3, 1, 1))
+    color_palette, _ = get_palette()
+
+    @load "./weights/v1/epoch-5-valloss-0.103507854.bson" model_host
+    model = model_host |> device |> testmode!
+
+    video_file = "/home/pxl-th/projects/SLAM.jl/data/5.hevc"
+    reader = video_file |> openvideo
+
+    i = 1
+    open_video_out("5-seg.mp4", RGB{N0f8}, wresolution; framerate=25) do writer
+    for frame in reader
+        in_frame = imresize(frame, iresolution)
+        in_frame = in_frame |> channelview .|> Float32
+        in_frame .= (in_frame .- μ) ./ σ # ImageNet preprocessing.
+        in_frame = permutedims(in_frame, (3, 2, 1))
+        in_frame = Flux.unsqueeze(in_frame, 4) |> device
+
+        probs = softmax(in_frame |> model; dims=3) |> cpu
+        mask = probs_to_mask(probs[:, :, :, 1], color_palette)
+        mask = permutedims(mask, (2, 1))
+
+        wframe = hcat(imresize(frame, oresolution), imresize(mask, oresolution))
+        wframe = imresize(wframe, wresolution)
+        write(writer, wframe)
+
+        @info i
+        i += 1
+    end
+    end
+    reader |> close
+end
+
+# main()
+# eval()
