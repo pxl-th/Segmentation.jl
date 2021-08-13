@@ -14,7 +14,6 @@ using Interpolations
 using BSON: @save, @load, bson
 using ProgressMeter
 
-# Flux.trainable(bn::Flux.BatchNorm) = Flux.hasaffine(bn) ? (bn.β, bn.γ, bn.μ, bn.σ²) : ()
 Random.seed!(1)
 
 include("data.jl")
@@ -50,18 +49,13 @@ function valid_step(model, x, y, epoch, i, palette, bar)
     validation_loss
 end
 
-"""
-TODO BatchNorm does not change type of ϵ & momentum
-TODO explicit type conversion on the models output crashes gradient calculation
-"""
 function main()
     device = gpu
     epochs = 1000
-    batch_size = 1
+    batch_size = 2
     color_palette, bw_palette = get_palette()
     classes = bw_palette |> length
-    resolution = (10 * 32, 13 * 32)
-    # resolution = (7 * 32, 10 * 32)
+    resolution = (7 * 32, 10 * 32)
 
     flip_augmentation = FlipX(0.5)
     augmentations = Sequential([
@@ -94,12 +88,6 @@ function main()
     model = UNet(;classes, encoder, encoder_channels) |> device
     θ = model |> params
 
-    # θ_save = model |> cpu |> params |> collect
-    # @save "weights_$x.bson" θ_save
-    # @load "weights.bson" θ_save
-    # θ_load = θ_save |> Flux.Params
-    # Flux.loadparams!(model, θ_load)
-
     @info "Image resolution: $resolution [height, width]"
     @info "Train images: $(length(train_files))"
     @info "Validation images: $(length(valid_files))"
@@ -121,7 +109,7 @@ function main()
         train_loss /= length(train_loader)
         @info "Epoch $epoch | Train Loss $train_loss"
 
-        # model |> testmode!
+        model |> testmode!
         bar = get_pb(length(valid_loader), "[epoch $epoch | testing]: ")
         validation_loss = 0f0
         for (i, (x, y)) in enumerate(valid_loader)
@@ -133,10 +121,8 @@ function main()
         validation_loss /= length(valid_loader)
         @info "Epoch $epoch | Validation Loss $validation_loss"
 
-        # θ_save = model |> cpu |> params |> collect
-        # @save "./weights/v2/params-epoch-$epoch-valloss-$validation_loss.bson" θ_save
-
-        # GC.gc()
+        model_host = model |> cpu
+        @save "./weights/v1/epoch-$epoch-valloss-$validation_loss.bson" model_host
     end
 end
 
