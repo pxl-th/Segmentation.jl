@@ -3,7 +3,6 @@ using LinearAlgebra
 
 using Flux
 using EfficientNet
-# using ResNet
 using Segmentation
 
 using Augmentations
@@ -76,16 +75,13 @@ function main()
 
     train_dataset = Dataset(
         base_dir, train_files, resolution, bw_palette,
-        flip_augmentation, augmentations,
-    )
+        flip_augmentation, augmentations)
     valid_dataset = Dataset(base_dir, valid_files, resolution, bw_palette)
     valid_loader = DataLoader(valid_dataset, batch_size)
 
     optimizer = ADAM(3f-4)
     encoder = EfficientNet.from_pretrained("efficientnet-b0"; include_head=false)
-    encoder_channels = EfficientNet.stages_channels(encoder)
-    # encoder = ResNet.from_pretrained(18; classes=nothing)
-    # encoder_channels = ResNet.stages_channels(encoder)
+    encoder_channels = encoder.stages_channels |> collect
     model = UNet(;classes, encoder, encoder_channels) |> device
     θ = model |> params
 
@@ -99,13 +95,11 @@ function main()
         model |> trainmode!
         train_dataset.files |> shuffle!
         train_loader = DataLoader(train_dataset, batch_size)
-        bar = get_pb(length(train_loader), "[epoch $epoch | training]: ")
 
+        bar = get_pb(length(train_loader), "[epoch $epoch | training]: ")
         train_loss = 0f0
         for (x, y) in train_loader
-            train_loss += train_step(
-                model, θ, x |> device, y |> device, optimizer, bar,
-            )
+            train_loss += train_step(model, θ, x |> device, y |> device, optimizer, bar)
         end
         train_loss /= length(train_loader)
         @info "Epoch $epoch | Train Loss $train_loss"
@@ -116,8 +110,7 @@ function main()
         for (i, (x, y)) in enumerate(valid_loader)
             validation_loss += valid_step(
                 model, x |> device, y |> device,
-                epoch, i, color_palette, bar,
-            )
+                epoch, i, color_palette, bar)
         end
         validation_loss /= length(valid_loader)
         @info "Epoch $epoch | Validation Loss $validation_loss"
@@ -169,5 +162,5 @@ function eval()
     reader |> close
 end
 
-# main()
+main()
 # eval()

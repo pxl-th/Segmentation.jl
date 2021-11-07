@@ -19,8 +19,7 @@ function UNet(;
     UNet(
         encoder,
         UNetDecoder(encoder_channels, decoder_channels),
-        SegmentationHead((3, 3), decoder_channels[end]=>classes),
-    )
+        SegmentationHead((3, 3), decoder_channels[end]=>classes))
 end
 
 function (u::UNet)(x)

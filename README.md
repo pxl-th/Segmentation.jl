@@ -6,6 +6,13 @@ Segmentation models.
 
 ## Install
 
+These two are needed to run the example:
+
+```
+]add https://github.com/pxl-th/Augmentations.jl.git
+]add https://github.com/pxl-th/EfficientNet.jl.git
+```
+
 ```
 ]add https://github.com/pxl-th/Segmentation.jl.git
 ```

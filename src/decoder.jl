@@ -1,10 +1,6 @@
-conv2drelu(
-    kernel::Tuple{Int, Int}, channels::Pair{Int, Int};
-    pad::Int = 0, stride::Int = 1,
-) = (
+conv2drelu(kernel, channels; pad = 0, stride = 1) = (
     Conv(kernel, channels; stride, pad, bias=false),
-    BatchNorm(channels[2], relu),
-)
+    BatchNorm(channels[2], relu))
 
 struct DecoderBlock{C}
     conv::C
@@ -12,11 +8,9 @@ end
 Flux.@functor DecoderBlock
 
 function DecoderBlock(in_channels, skip_channels, out_channels)
-    conv1 = conv2drelu(
-        (3, 3), (in_channels + skip_channels)=>out_channels; pad=1,
-    )
-    conv2 = conv2drelu((3, 3), out_channels=>out_channels; pad=1)
-    DecoderBlock(Chain(conv1..., conv2...))
+    DecoderBlock(Chain(
+        conv2drelu((3, 3), (in_channels + skip_channels)=>out_channels; pad=1)...,
+        conv2drelu((3, 3), out_channels=>out_channels; pad=1)...))
 end
 
 function (d::DecoderBlock)(x, skip)
