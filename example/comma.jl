@@ -21,40 +21,40 @@ include("data.jl")
 function train_step(model, θ, x, y, optimizer, bar)
     loss_cpu = 0f0
     ∇ = gradient(θ) do
-        l = Flux.logitcrossentropy(x |> model, y; dims=3)
-        loss_cpu = l |> cpu
+        l = Flux.logitcrossentropy(model(x), y; dims=3)
+        loss_cpu = cpu(l)
         l
     end
-
     Flux.Optimise.update!(optimizer, θ, ∇)
-    bar |> next!
+
+    next!(bar)
     loss_cpu
 end
 
 function valid_step(model, x, y, epoch, i, palette, bar)
-    o = x |> model
-    validation_loss = Flux.logitcrossentropy(o, y; dims=3) |> cpu
+    o = model(x)
+    validation_loss = cpu(Flux.logitcrossentropy(o, y; dims=3))
 
     if i ≤ 5
-        o = softmax(o; dims=3) |> cpu
+        o = cpu(softmax(o; dims=3))
         pred = probs_to_mask(o[:, :, :, 1], palette)
         save("./pred-$epoch-$i.png", permutedims(pred, (2, 1)))
 
-        y = y |> cpu
+        y = cpu(y)
         pred = probs_to_mask(y[:, :, :, 1], palette)
         save("./mask-$epoch-$i.png", permutedims(pred, (2, 1)))
     end
 
-    bar |> next!
+    next!(bar)
     validation_loss
 end
 
 function main()
-    device = gpu
+    transfer = gpu ∘ f32
     epochs = 1000
     batch_size = 2
     color_palette, bw_palette = get_palette()
-    classes = bw_palette |> length
+    classes = length(bw_palette)
     resolution = (7 * 32, 10 * 32)
 
     flip_augmentation = FlipX(0.5)
@@ -69,7 +69,7 @@ function main()
         ]),
     ])
 
-    base_dir = "/home/pxl-th/projects/comma10k"
+    base_dir = "/home/pxl-th/projects/datasets/comma10k"
     files = readlines(joinpath(base_dir, "files_trainable"))
     train_files, valid_files = load_file_names(files)
 
@@ -81,9 +81,9 @@ function main()
 
     optimizer = ADAM(3f-4)
     encoder = EfficientNet.from_pretrained("efficientnet-b0"; include_head=false)
-    encoder_channels = encoder.stages_channels |> collect
-    model = UNet(;classes, encoder, encoder_channels) |> device
-    θ = model |> params
+    encoder_channels = collect(encoder.stages_channels)
+    model = transfer(UNet(;classes, encoder, encoder_channels))
+    θ = params(model)
 
     @info "Image resolution: $resolution [height, width]"
     @info "Train images: $(length(train_files))"
@@ -92,36 +92,37 @@ function main()
     @info "--- Training ---"
 
     for epoch in 1:epochs
-        model |> trainmode!
-        train_dataset.files |> shuffle!
+        trainmode!(model)
+        shuffle!(train_dataset.files)
         train_loader = DataLoader(train_dataset, batch_size)
 
         bar = get_pb(length(train_loader), "[epoch $epoch | training]: ")
         train_loss = 0f0
         for (x, y) in train_loader
-            train_loss += train_step(model, θ, x |> device, y |> device, optimizer, bar)
+            train_loss += train_step(
+                model, θ, transfer(x), transfer(y), optimizer, bar)
         end
         train_loss /= length(train_loader)
         @info "Epoch $epoch | Train Loss $train_loss"
 
-        model |> testmode!
+        testmode!(model)
         bar = get_pb(length(valid_loader), "[epoch $epoch | testing]: ")
         validation_loss = 0f0
         for (i, (x, y)) in enumerate(valid_loader)
             validation_loss += valid_step(
-                model, x |> device, y |> device,
+                model, transfer(x), transfer(y),
                 epoch, i, color_palette, bar)
         end
         validation_loss /= length(valid_loader)
         @info "Epoch $epoch | Validation Loss $validation_loss"
 
-        model_host = model |> cpu
+        model_host = cpu(model)
         @save "./weights/v1/epoch-$epoch-valloss-$validation_loss.bson" model_host
     end
 end
 
 function eval()
-    device = gpu
+    transfer = gpu ∘ f32
     model_res = (7 * 32, 10 * 32)
     original_res = (874, 1164)
     write_res = (874 ÷ 3 + 1, 2 * original_res[2] ÷ 3)
@@ -132,22 +133,22 @@ function eval()
     color_palette, _ = get_palette()
 
     @load "./weights/v1/epoch-5-valloss-0.103507854.bson" model_host
-    model = model_host |> device |> testmode!
+    model = testmode!(transfer(model_host))
 
     output_video = "5-seg.mp4"
     video_file = "/home/pxl-th/projects/SLAM.jl/data/5.hevc"
-    reader = video_file |> openvideo
+    reader = openvideo(video_file)
 
     i = 1
     open_video_out(output_video, RGB{N0f8}, write_res; framerate=25) do writer
     for frame in reader
         in_frame = imresize(frame, model_res)
-        in_frame = in_frame |> channelview .|> Float32
+        in_frame = Float32.(channelview(in_frame))
         in_frame .= (in_frame .- μ) ./ σ # ImageNet preprocessing.
         in_frame = permutedims(in_frame, (3, 2, 1))
-        in_frame = Flux.unsqueeze(in_frame, 4) |> device
+        in_frame = transfer(Flux.unsqueeze(in_frame, 4))
 
-        probs = softmax(in_frame |> model; dims=3) |> cpu
+        probs = cpu(softmax(model(in_frame); dims=3))
         mask = probs_to_mask(probs[:, :, :, 1], color_palette)
         mask = permutedims(mask, (2, 1))
 
@@ -159,7 +160,7 @@ function eval()
         i += 1
     end
     end
-    reader |> close
+    close(reader)
 end
 
 main()

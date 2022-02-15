@@ -6,10 +6,10 @@ using Flux
 include("decoder.jl")
 include("head.jl")
 
-struct UNet
-    encoder
-    decoder
-    segmentation
+struct UNet{E, D, S}
+    encoder::E
+    decoder::D
+    segmentation::S
 end
 Flux.@functor UNet
 

@@ -1,6 +1,5 @@
 get_pb(n, desc::String) = Progress(
-    n; desc, dt=1, barglyphs=BarGlyphs("[=> ]"), barlen=50, color=:white,
-)
+    n; desc, dt=1, barglyphs=BarGlyphs("[=> ]"), barlen=50, color=:white)
 
 struct Dataset
     base::String
@@ -17,12 +16,12 @@ struct Dataset
     ) = new(base, files, resolution, palette, flip_augmentation, augmentations)
 end
 
-DataLoaders.nobs(d::Dataset) = d.files |> length
+DataLoaders.nobs(d::Dataset) = length(d.files)
 function DataLoaders.getobs(d::Dataset, i::Int64)
     name = d.files[i]
 
-    image = joinpath(d.base, "imgs", name) |> load .|> RGB
-    mask = joinpath(d.base, "masks", name) |> load .|> RGB
+    image = RGB.(load(joinpath(d.base, "imgs", name)))
+    mask = RGB.(load(joinpath(d.base, "masks", name)))
 
     image = imresize(image, d.resolution)
     mask = imresize(mask, d.resolution; method=Constant())
@@ -34,14 +33,14 @@ function DataLoaders.getobs(d::Dataset, i::Int64)
         image = d.augmentations([image])[1]
     end
 
-    image = image |> channelview .|> Float32
+    image = Float32.(channelview(image))
     # ImageNet preprocessing.
     μ = reshape([0.485f0, 0.456f0, 0.406f0], (3, 1, 1))
     σ = reshape([0.229f0, 0.224f0, 0.225f0], (3, 1, 1))
     image .= (image .- μ) ./ σ
     image = permutedims(image, (3, 2, 1))
 
-    mask = mask .|> Gray
+    mask = Gray.(mask)
     mask = permutedims(mask, (2, 1))
     mask = mask_to_classes(mask, d.palette)
 
@@ -67,7 +66,7 @@ function get_palette()
         # [0, 0, 0]        # for padding
     ]
     color_palette = [RGB{N0f8}((p ./ 255f0)...) for p in palette]
-    bw_palette = color_palette .|> Gray{N0f8}
+    bw_palette = Gray{N0f8}.(color_palette)
     color_palette, bw_palette
 end
 
@@ -76,7 +75,7 @@ mask: Gray(W, H)
 """
 function mask_to_classes(mask, palette)
     classes = Array{Int64}(undef, size(mask))
-    for (i, p) in palette |> enumerate
+    for (i, p) in enumerate(palette)
         @inbounds classes[mask .== p] .= i
     end
     classes = Flux.onehotbatch(classes, 1:length(palette))
